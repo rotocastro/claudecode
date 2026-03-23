@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Briefing do Dia — Seg, 23/mar/2026</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f4f1ec;
+    color: #2d2d2d;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .header {
+    background: #1a3a2a;
+    color: #f0ede4;
+    padding: 28px 32px 22px;
+    border-bottom: 4px solid #2d5a3d;
+  }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+  .header .subtitle { font-size: 13px; color: #a8c5b0; margin-top: 4px; }
+  .container { max-width: 680px; margin: 0 auto; padding: 24px 20px 40px; }
+
+  .section-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #6b7280;
+    margin-bottom: 12px;
+    margin-top: 28px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid #ddd8d0;
+  }
+  .weather-grid {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .weather-card {
+    flex: 1;
+    background: #e8f0f8;
+    border-radius: 12px;
+    padding: 18px 16px;
+    border: 1px solid #c8daea;
+  }
+  .weather-card .day-label {
+    font-size: 11px;
+    font-weight: 700;
+    color: #4a6fa5;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+  .weather-card .icon { font-size: 32px; margin-bottom: 6px; display: block; }
+  .weather-card .condition {
+    font-size: 13px;
+    color: #2c3e50;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .weather-card .temp {
+    font-size: 15px;
+    font-weight: 700;
+    color: #1a3a6a;
+  }
+  .weather-card .temp span { font-size: 12px; font-weight: 400; color: #6080a0; }
+  .weather-card .rain {
+    margin-top: 6px;
+    font-size: 12px;
+    color: #4060a0;
+  }
+  .weather-card .rain-bar {
+    height: 4px;
+    background: #c8daea;
+    border-radius: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+  }
+  .weather-card .rain-bar-fill {
+    height: 100%;
+    background: #4a7fc1;
+    border-radius: 2px;
+  }
+
+  .event-list { list-style: none; }
+  .event-item {
+    display: flex;
+    align-items: flex-start;
+    padding: 10px 0;
+    border-bottom: 1px solid #e8e4de;
+    gap: 0;
+  }
+  .event-item:last-child { border-bottom: none; }
+  .event-time {
+    width: 72px;
+    min-width: 72px;
+    font-size: 12px;
+    color: #9a8c80;
+    font-weight: 600;
+    padding-top: 1px;
+    font-variant-numeric: tabular-nums;
+  }
+  .event-body { flex: 1; }
+  .event-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.3;
+  }
+  .event-name.last-occurrence { color: #c0392b; }
+  .event-loc {
+    font-size: 12px;
+    color: #6b7280;
+    margin-top: 2px;
+  }
+  .event-badges { display: inline-flex; gap: 5px; margin-left: 8px; vertical-align: middle; }
+  .badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+  }
+  .badge-teams { background: #dbeafe; color: #1e40af; }
+  .badge-presencial { background: #fee2e2; color: #991b1b; }
+  .badge-aniversario { background: #ede9fe; color: #5b21b6; }
+  .badge-ultima { background: #fef3c7; color: #92400e; }
+  .allday-event {
+    background: #f0f9f4;
+    border: 1px solid #bbdec8;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .allday-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #2d6a4f;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background: #bbdec8;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .allday-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1a3a2a;
+  }
+  .allday-loc { font-size: 11px; color: #5a7a60; margin-top: 1px; }
+
+  .day-group { margin-bottom: 20px; }
+  .day-header {
+    font-size: 13px;
+    font-weight: 700;
+    color: #1a3a2a;
+    background: #e8ede9;
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .day-cheio {
+    font-size: 10px;
+    color: #b45309;
+    background: #fef3c7;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+
+  .footer {
+    text-align: center;
+    font-size: 11px;
+    color: #9a8c80;
+    margin-top: 36px;
+    padding-top: 16px;
+    border-top: 1px solid #ddd8d0;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🌿 Briefing do Dia — Seg, 23/mar/2026</h1>
+  <div class="subtitle">Bom dia, Rodolfo! Aqui está o resumo do seu dia.</div>
+</div>
+
+<div class="container">
+
+  <div class="section-title">Previsão do Tempo · Campinas, SP</div>
+  <div class="weather-grid">
+
+    <div class="weather-card">
+      <div class="day-label">Hoje · Segunda, 23/mar</div>
+      <span class="icon">🌤️</span>
+      <div class="condition">Sol com nuvens passageiras</div>
+      <div class="temp">19° <span>mín</span> &nbsp;/&nbsp; 29° <span>máx</span></div>
+      <div class="rain">
+        💧 Chuva isolada à tarde · ~20%
+        <div class="rain-bar"><div class="rain-bar-fill" style="width:20%"></div></div>
+      </div>
+    </div>
+
+    <div class="weather-card">
+      <div class="day-label">Amanhã · Terça, 24/mar</div>
+      <span class="icon">⛈️</span>
+      <div class="condition">Trovoadas à tarde e noite</div>
+      <div class="temp">18° <span>mín</span> &nbsp;/&nbsp; 28° <span>máx</span></div>
+      <div class="rain">
+        💧 Alta chance de chuva · ~60%
+        <div class="rain-bar"><div class="rain-bar-fill" style="width:60%"></div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="section-title">Agenda do Dia · Segunda, 23/mar/2026</div>
+
+  <div class="allday-event">
+    <span class="allday-label">Dia todo</span>
+    <div>
+      <div class="allday-name">
+        Testes Integrados — Projeto Release 2026
+        <span class="event-badges">
+          <span class="badge badge-teams">Teams</span>
+          <span class="badge badge-presencial">Presencial</span>
+        </span>
+      </div>
+      <div class="allday-loc">Sala Uva de Verdade · em andamento até 03/abr</div>
+    </div>
+  </div>
+
+  <ul class="event-list">
+
+    <li class="event-item">
+      <div class="event-time">09:15</div>
+      <div class="event-body">
+        <div class="event-name">
+          Receivables Global
+          <span class="event-badges"><span class="badge badge-teams">Teams</span></span>
+        </div>
+        <div class="event-loc">09:15 – 09:30 · Recorrente toda segunda</div>
+      </div>
+    </li>
+
+    <li class="event-item">
+      <div class="event-time">11:00</div>
+      <div class="event-body">
+        <div class="event-name">
+          OBZ Tesouraria — Ajuda Preenchimento Jan/Fev
+          <span class="event-badges">
+            <span class="badge badge-teams">Teams</span>
+            <span class="badge badge-presencial">Presencial</span>
+          </span>
+        </div>
+        <div class="event-loc">11:00 – 12:00 · Sala Goiaba SP</div>
+      </div>
+    </li>
+
+    <li class="event-item">
+      <div class="event-time">14:00</div>
+      <div class="event-body">
+        <div class="event-name last-occurrence">
+          RPS Tesouraria
+          <span class="event-badges">
+            <span class="badge badge-teams">Teams</span>
+            <span class="badge badge-ultima">⚠ Última ocorrência</span>
+          </span>
+        </div>
+        <div class="event-loc">14:00 – 14:30 · Série encerra hoje (20/out/25 – 23/mar/26)</div>
+      </div>
+    </li>
+
+    <li class="event-item">
+      <div class="event-time">17:30</div>
+      <div class="event-body">
+        <div class="event-name">Aplicação / Resgate</div>
+        <div class="event-loc">17:30 – 17:45 · Rotineiro</div>
+      </div>
+    </li>
+
+  </ul>
+
+  <div class="section-title">Próximos Dias · 24 – 30/mar/2026</div>
+
+  <div class="day-group">
+    <div class="day-header">
+      Terça, 24/mar
+      <span class="day-cheio">· Dia cheio</span>
+    </div>
+    <ul class="event-list">
+      <li class="event-item">
+        <div class="event-time">10:00</div>
+        <div class="event-body">
+          <div class="event-name">
+            Status Report — Suporte/Projetos MR
+            <span class="event-badges"><span class="badge badge-teams">Teams</span></span>
+          </div>
+          <div class="event-loc">10:00 – 11:00 · Recorrente</div>
+        </div>
+      </li>
+      <li class="event-item">
+        <div class="event-time">11:00</div>
+        <div class="event-body">
+          <div class="event-name">
+            Cisão Agro N1 — FUP
+            <span class="event-badges"><span class="badge badge-teams">Teams</span></span>
+          </div>
+          <div class="event-loc">11:00 – 12:00 · Recorrente</div>
+        </div>
+      </li>
+      <li class="event-item">
+        <div class="event-time">14:00</div>
+        <div class="event-body">
+          <div class="event-name">
+            Data Fixa de Pgto
+            <span class="event-badges">
+              <span class="badge badge-teams">Teams</span>
+              <span class="badge badge-presencial">Presencial</span>
+            </span>
+          </div>
+          <div class="event-loc">14:00 – 15:00 · Sala UVA SP</div>
+        </div>
+      </li>
+      <li class="event-item">
+        <div class="event-time">17:00</div>
+        <div class="event-body">
+          <div class="event-name">
+            FC Direto
+            <span class="event-badges"><span class="badge badge-teams">Teams</span></span>
+          </div>
+          <div class="event-loc">17:00 – 18:00 · Recorrente</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="day-group">
+    <div class="day-header">Quarta, 25/mar</div>
+    <ul class="event-list">
+      <li class="event-item">
+        <div class="event-time">15:00</div>
+        <div class="event-body">
+          <div class="event-name">Retorno Rafa — Vera</div>
+          <div class="event-loc">15:00 – 16:00 · Calendário Family</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="day-group">
+    <div class="day-header">Quinta, 26/mar</div>
+    <ul class="event-list">
+      <li class="event-item">
+        <div class="event-time">06:00</div>
+        <div class="event-body">
+          <div class="event-name">Troca de treino Lu <em style="font-size:11px;color:#b45309;font-weight:400;">(aguardando confirmação)</em></div>
+          <div class="event-loc">06:00 – 07:00 · Convite de Luiza Dellavolpe</div>
+        </div>
+      </li>
+      <li class="event-item">
+        <div class="event-time">16:00</div>
+        <div class="event-body">
+          <div class="event-name">
+            NATURAL ONE — DANIEL
+            <span class="event-badges">
+              <span class="badge badge-presencial">Presencial</span>
+            </span>
+          </div>
+          <div class="event-loc">16:00 – 17:00 · Rua Funchal, 263 — 11° andar (Prédio de trás)</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="day-group">
+    <div class="day-header">Sexta, 27/mar</div>
+    <ul class="event-list">
+      <li class="event-item">
+        <div class="event-time">06:00</div>
+        <div class="event-body">
+          <div class="event-name">Troca de treino Lu</div>
+          <div class="event-loc">06:00 – 07:00 · Convite de Luiza Dellavolpe</div>
+        </div>
+      </li>
+      <li class="event-item">
+        <div class="event-time">07:10</div>
+        <div class="event-body">
+          <div class="event-name">Terapia Lu</div>
+          <div class="event-loc">07:10 – 08:40 · Recorrente</div>
+        </div>
+      </li>
+      <li class="event-item">
+        <div class="event-time">09:00</div>
+        <div class="event-body">
+          <div class="event-name">
+            Aniversário — Cretinalha, Ana e Brim
+            <span class="event-badges"><span class="badge badge-aniversario">🎂 Aniversário</span></span>
+          </div>
+          <div class="event-loc">09:00 – 10:00 · Recorrente</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="day-group">
+    <div class="day-header">Domingo, 29/mar</div>
+    <ul class="event-list">
+      <li class="event-item">
+        <div class="event-time">10:20</div>
+        <div class="event-body">
+          <div class="event-name">Interno Hípica</div>
+          <div class="event-loc">10:20 – 11:20 · Calendário Family</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="day-group">
+    <div class="day-header">Segunda, 30/mar</div>
+    <ul class="event-list">
+      <li class="event-item">
+        <div class="event-time">09:15</div>
+        <div class="event-body">
+          <div class="event-name">
+            Receivables Global
+            <span class="event-badges"><span class="badge badge-teams">Teams</span></span>
+          </div>
+          <div class="event-loc">09:15 – 09:30 · Recorrente toda segunda</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+
+  <div class="footer">
+    Gerado em 23/mar/2026 · Dados: Google Calendar + Previsão Climatempo/AccuWeather<br>
+    <span style="color:#c0b8b0;">Testes Integrados - Projeto Release 2026 está em andamento até 03/abr/2026</span>
+  </div>
+
+</div>
+</body>
+</html>
