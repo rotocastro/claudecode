@@ -1,128 +1,49 @@
 #!/usr/bin/env python3
 """
-Briefing diário do Rodolfo.
-Busca clima, agenda e gera rascunho HTML no Gmail.
+Briefing diário via Telegram.
+Lê calendário via iCal (sem OAuth) e envia mensagem no Telegram.
 """
 
 import os
-import json
-import base64
 import requests
-from datetime import datetime, timedelta, timezone
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+from datetime import datetime, timedelta, date
 from collections import defaultdict
 
 import pytz
-from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
+import recurring_ical_events
+from icalendar import Calendar
 
 # ─── Config ────────────────────────────────────────────────────────────────────
 
 TZ = pytz.timezone("America/Sao_Paulo")
-RECIPIENT = "rodolfo.tocastro@gmail.com"
-CITY = "Campinas"
 CITY_WEATHER = "Campinas,BR"
 
-CALENDAR_IDS = [
-    "rodolfo.tocastro@gmail.com",
-    "pt-br.brazilian#holiday@group.v.calendar.google.com",
-    "dg93sv9kfu3h6spuqgdo887932qo44eh@import.calendar.google.com",
-    "family13773359058415049452@group.calendar.google.com",
-]
-
-SCOPES = [
-    "https://www.googleapis.com/auth/calendar.readonly",
-    "https://www.googleapis.com/auth/gmail.compose",
-]
-
-WEEKDAY_PT = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
-MONTH_PT = [
-    "", "jan", "fev", "mar", "abr", "mai", "jun",
-    "jul", "ago", "set", "out", "nov", "dez",
-]
-
-# ─── Auth ──────────────────────────────────────────────────────────────────────
-
-def get_credentials():
-    creds = Credentials(
-        token=None,
-        refresh_token=os.environ["GOOGLE_REFRESH_TOKEN"],
-        client_id=os.environ["GOOGLE_CLIENT_ID"],
-        client_secret=os.environ["GOOGLE_CLIENT_SECRET"],
-        token_uri="https://oauth2.googleapis.com/token",
-        scopes=SCOPES,
-    )
-    creds.refresh(Request())
-    return creds
-
-
-# ─── Weather ───────────────────────────────────────────────────────────────────
+WEEKDAY_SHORT = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"]
+MONTH_PT = ["", "jan", "fev", "mar", "abr", "mai", "jun",
+            "jul", "ago", "set", "out", "nov", "dez"]
 
 WEATHER_ICONS = {
-    "thundery": "⛈️",
-    "blizzard": "🌨️",
-    "heavy rain": "🌧️",
-    "rain": "🌦️",
-    "drizzle": "🌦️",
-    "shower": "🌦️",
-    "overcast": "☁️",
-    "cloudy": "⛅",
-    "partly": "⛅",
-    "mist": "🌫️",
-    "fog": "🌫️",
-    "clear": "☀️",
-    "sunny": "☀️",
+    "thundery": "⛈️", "blizzard": "🌨️", "heavy rain": "🌧️",
+    "rain": "🌦️", "drizzle": "🌦️", "shower": "🌦️",
+    "overcast": "☁️", "cloudy": "⛅", "partly": "⛅",
+    "mist": "🌫️", "fog": "🌫️", "clear": "☀️", "sunny": "☀️",
 }
 
 DESC_PT = {
-    "Sunny": "Ensolarado",
-    "Clear": "Céu limpo",
-    "Partly cloudy": "Parcialmente nublado",
-    "Cloudy": "Nublado",
-    "Overcast": "Nublado/fechado",
-    "Mist": "Névoa",
+    "Sunny": "Ensolarado", "Clear": "Céu limpo",
+    "Partly cloudy": "Parc. nublado", "Cloudy": "Nublado",
+    "Overcast": "Fechado", "Mist": "Névoa", "Fog": "Nevoeiro",
     "Patchy rain possible": "Chuva isolada possível",
-    "Patchy snow possible": "Neve isolada possível",
-    "Blowing snow": "Neve com vento",
-    "Blizzard": "Nevasca",
-    "Fog": "Nevoeiro",
-    "Freezing fog": "Nevoeiro congelante",
-    "Patchy light drizzle": "Garoa fraca isolada",
-    "Light drizzle": "Garoa fraca",
-    "Freezing drizzle": "Garoa congelante",
-    "Heavy freezing drizzle": "Garoa congelante intensa",
+    "Light rain": "Chuva fraca", "Moderate rain": "Chuva moderada",
+    "Heavy rain": "Chuva forte", "Light drizzle": "Garoa",
+    "Light rain shower": "Pancada fraca",
+    "Moderate or heavy rain shower": "Pancada forte",
     "Patchy light rain": "Chuva fraca isolada",
-    "Light rain": "Chuva fraca",
-    "Moderate rain at times": "Chuva moderada a intervalos",
-    "Moderate rain": "Chuva moderada",
+    "Moderate rain at times": "Chuva moderada",
     "Heavy rain at times": "Chuva forte a intervalos",
-    "Heavy rain": "Chuva forte",
-    "Light freezing rain": "Chuva congelante fraca",
-    "Moderate or heavy freezing rain": "Chuva congelante moderada/forte",
-    "Light sleet": "Granizo fraco",
-    "Moderate or heavy sleet": "Granizo moderado/forte",
-    "Patchy light snow": "Neve fraca isolada",
-    "Light snow": "Neve fraca",
-    "Patchy moderate snow": "Neve moderada isolada",
-    "Moderate snow": "Neve moderada",
-    "Patchy heavy snow": "Neve forte isolada",
-    "Heavy snow": "Neve forte",
-    "Ice pellets": "Pelotas de gelo",
-    "Light rain shower": "Pancada de chuva fraca",
-    "Moderate or heavy rain shower": "Pancada de chuva moderada/forte",
-    "Torrential rain shower": "Pancada torrencial",
-    "Light sleet showers": "Pancadas de granizo fraco",
-    "Moderate or heavy sleet showers": "Pancadas de granizo",
-    "Light snow showers": "Pancadas de neve fraca",
-    "Moderate or heavy snow showers": "Pancadas de neve",
-    "Light showers of ice pellets": "Pelotas de gelo fracas",
-    "Moderate or heavy showers of ice pellets": "Pelotas de gelo moderadas",
-    "Patchy light rain with thunder": "Chuva fraca isolada com trovoadas",
-    "Moderate or heavy rain with thunder": "Chuva com trovoadas",
-    "Patchy light snow with thunder": "Neve fraca com trovoadas",
-    "Moderate or heavy snow with thunder": "Neve com trovoadas",
+    "Patchy light rain with thunder": "Chuva com trovoadas",
+    "Moderate or heavy rain with thunder": "Chuva forte com trovoadas",
+    "Thundery outbreaks possible": "Trovoadas possíveis",
     "Thunder outbreaks possible": "Trovoadas possíveis",
 }
 
@@ -135,388 +56,187 @@ def weather_icon(desc: str) -> str:
     return "🌤️"
 
 
-def translate_desc(desc: str) -> str:
-    return DESC_PT.get(desc, desc)
+# ─── Weather ───────────────────────────────────────────────────────────────────
 
-
-def get_weather():
+def get_weather() -> dict:
     try:
-        url = f"https://wttr.in/{CITY_WEATHER}?format=j1"
-        r = requests.get(url, timeout=12, headers={"User-Agent": "curl/7.68.0"})
+        r = requests.get(
+            f"https://wttr.in/{CITY_WEATHER}?format=j1",
+            timeout=12, headers={"User-Agent": "curl/7.68.0"}
+        )
         data = r.json()
 
-        def parse_day(day):
-            # Use midday forecast (index 4 = ~14h)
-            hourly = day["hourly"]
-            mid = hourly[min(4, len(hourly) - 1)]
+        def parse(day):
+            mid = day["hourly"][min(4, len(day["hourly"]) - 1)]
             desc = mid["weatherDesc"][0]["value"]
             return {
-                "desc": translate_desc(desc),
+                "desc": DESC_PT.get(desc, desc),
                 "desc_en": desc,
                 "min": day["mintempC"],
                 "max": day["maxtempC"],
                 "rain": mid.get("chanceofrain", "?"),
             }
 
-        return {
-            "today": parse_day(data["weather"][0]),
-            "tomorrow": parse_day(data["weather"][1]),
-        }
+        return {"today": parse(data["weather"][0]), "tomorrow": parse(data["weather"][1])}
     except Exception as e:
-        print(f"[WARN] Weather fetch failed: {e}")
-        fallback = {"desc": "Dados indisponíveis", "desc_en": "", "min": "–", "max": "–", "rain": "–"}
-        return {"today": fallback, "tomorrow": fallback}
+        print(f"[WARN] Weather: {e}")
+        fb = {"desc": "Indisponível", "desc_en": "", "min": "–", "max": "–", "rain": "–"}
+        return {"today": fb, "tomorrow": fb}
 
 
-# ─── Calendar ──────────────────────────────────────────────────────────────────
+# ─── Calendar (iCal) ───────────────────────────────────────────────────────────
 
-def rfc3339(dt: datetime) -> str:
-    return dt.isoformat()
+def fetch_ical(url: str) -> Calendar:
+    r = requests.get(url, timeout=15)
+    r.raise_for_status()
+    return Calendar.from_ical(r.content)
 
 
-def get_all_events(cal_service, time_min: datetime, time_max: datetime):
+def get_events(ical_urls: list, start_dt: datetime, end_dt: datetime) -> list:
     events = []
-    for cal_id in CALENDAR_IDS:
+    for url in ical_urls:
         try:
-            result = cal_service.events().list(
-                calendarId=cal_id,
-                timeMin=rfc3339(time_min),
-                timeMax=rfc3339(time_max),
-                singleEvents=True,
-                orderBy="startTime",
-                timeZone="America/Sao_Paulo",
-                maxResults=250,
-            ).execute()
-            for ev in result.get("items", []):
-                ev["_calendarId"] = cal_id
-            events.extend(result.get("items", []))
+            cal = fetch_ical(url)
+            for component in recurring_ical_events.of(cal).between(start_dt, end_dt):
+                ev_start = component.get("DTSTART").dt
+                ev_end_raw = component.get("DTEND")
+                ev_end = ev_end_raw.dt if ev_end_raw else ev_start
+                summary = str(component.get("SUMMARY", "(sem título)"))
+                location = str(component.get("LOCATION", "")) if component.get("LOCATION") else ""
+
+                if isinstance(ev_start, date) and not isinstance(ev_start, datetime):
+                    ev_start = TZ.localize(datetime.combine(ev_start, datetime.min.time()))
+                    ev_end = TZ.localize(datetime.combine(ev_end, datetime.min.time()))
+                    all_day = True
+                else:
+                    ev_start = ev_start.astimezone(TZ) if ev_start.tzinfo else TZ.localize(ev_start)
+                    ev_end = ev_end.astimezone(TZ) if ev_end.tzinfo else TZ.localize(ev_end)
+                    all_day = False
+
+                events.append({
+                    "summary": summary,
+                    "location": location,
+                    "start": ev_start,
+                    "end": ev_end,
+                    "all_day": all_day,
+                })
         except Exception as e:
-            print(f"[WARN] Calendar {cal_id}: {e}")
-    return events
+            print(f"[WARN] iCal fetch error: {e}")
+
+    # Deduplicate by (summary, start)
+    seen, unique = set(), []
+    for ev in events:
+        key = (ev["summary"], ev["start"])
+        if key not in seen:
+            seen.add(key)
+            unique.append(ev)
+
+    return sorted(unique, key=lambda x: x["start"])
 
 
-def event_start_dt(ev) -> datetime:
-    s = ev.get("start", {})
-    dt_str = s.get("dateTime") or s.get("date")
-    if not dt_str:
-        return datetime.min.replace(tzinfo=timezone.utc)
-    dt = datetime.fromisoformat(dt_str)
-    if dt.tzinfo is None:
-        dt = TZ.localize(dt)
-    return dt
+# ─── Formatting ────────────────────────────────────────────────────────────────
 
-
-def event_end_dt(ev) -> datetime:
-    s = ev.get("end", {})
-    dt_str = s.get("dateTime") or s.get("date")
-    if not dt_str:
-        return datetime.min.replace(tzinfo=timezone.utc)
-    dt = datetime.fromisoformat(dt_str)
-    if dt.tzinfo is None:
-        dt = TZ.localize(dt)
-    return dt
-
-
-def fmt_time(dt: datetime) -> str:
-    return dt.strftime("%H:%M")
-
-
-def is_all_day(ev) -> bool:
-    return "date" in ev.get("start", {}) and "dateTime" not in ev.get("start", {})
+def is_birthday(ev) -> bool:
+    s = ev["summary"].lower()
+    return "aniversário" in s or "aniversario" in s or "birthday" in s
 
 
 def is_teams(ev) -> bool:
-    loc = (ev.get("location") or "").lower()
-    desc = (ev.get("description") or "").lower()
-    return "teams" in loc or "microsoft teams" in loc or "teams" in desc[:200]
+    return "teams" in ev["location"].lower()
 
 
-def is_presencial(ev) -> bool:
-    loc = ev.get("location") or ""
-    loc_lower = loc.lower()
-    # Has a real address (not only Teams/Meet)
-    has_address = len(loc.strip()) > 5 and (
-        "rua " in loc_lower
-        or "av." in loc_lower
-        or "avenida" in loc_lower
-        or "sala" in loc_lower
-        or "andar" in loc_lower
-        or "uva" in loc_lower.split("teams")[0] if "teams" in loc_lower else True
-    )
-    not_only_virtual = not (
-        loc_lower.strip().startswith("reunião do microsoft teams")
-        or loc_lower.strip() == "teams"
-    )
-    return has_address and not_only_virtual
-
-
-def is_birthday(ev) -> bool:
-    summary = (ev.get("summary") or "").lower()
-    return "aniversário" in summary or "aniversario" in summary or "birthday" in summary
-
-
-def is_holiday(ev) -> bool:
-    return "holiday" in (ev.get("_calendarId") or "")
-
-
-def is_routine_short(ev) -> bool:
-    """15-min routine events like Aplicação/Resgate."""
-    if is_all_day(ev):
+def is_routine(ev) -> bool:
+    if ev["all_day"]:
         return False
-    summary = (ev.get("summary") or "").lower()
-    start = event_start_dt(ev)
-    end = event_end_dt(ev)
-    duration = (end - start).total_seconds() / 60
-    return duration <= 15 and ("aplicação" in summary or "resgate" in summary)
+    dur = (ev["end"] - ev["start"]).total_seconds() / 60
+    s = ev["summary"].lower()
+    return dur <= 15 and any(x in s for x in ["aplicação", "resgate"])
 
 
-def duration_min(ev) -> float:
-    if is_all_day(ev):
-        return 0
-    start = event_start_dt(ev)
-    end = event_end_dt(ev)
-    return (end - start).total_seconds() / 60
+def fmt_event(ev) -> str | None:
+    if is_routine(ev):
+        return None
 
+    time_str = "Dia todo" if ev["all_day"] else f"{ev['start'].strftime('%H:%M')}–{ev['end'].strftime('%H:%M')}"
+    summary = ("🎂 " if is_birthday(ev) else "") + ev["summary"]
 
-# ─── HTML builder ──────────────────────────────────────────────────────────────
-
-CSS = """
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-       background: #f4f1ec; color: #2d2d2d; }
-.wrapper { max-width: 680px; margin: 0 auto; background: #f4f1ec; }
-.header { background: #1a3a2a; padding: 28px 32px 22px; }
-.header h1 { color: #f0ebe0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
-.header .subtitle { color: #a8c4a0; font-size: 13px; margin-top: 4px; }
-.section { padding: 24px 32px 8px; }
-.section-title { font-size: 13px; font-weight: 700; text-transform: uppercase;
-                 letter-spacing: 1.2px; color: #1a3a2a; border-bottom: 2px solid #1a3a2a;
-                 padding-bottom: 6px; margin-bottom: 16px; }
-/* Weather */
-.weather-grid { display: flex; gap: 12px; }
-.weather-card { flex: 1; background: #e8f0f8; border-radius: 10px; padding: 16px 18px; }
-.weather-card .day-label { font-size: 11px; font-weight: 700; text-transform: uppercase;
-                            letter-spacing: 0.8px; color: #4a6a8a; margin-bottom: 8px; }
-.weather-card .icon { font-size: 36px; line-height: 1; }
-.weather-card .condition { font-size: 13px; color: #2a4a6a; margin: 6px 0 4px; font-weight: 600; }
-.weather-card .temp { font-size: 20px; font-weight: 700; color: #1a3a5a; }
-.weather-card .temp span { font-size: 13px; font-weight: 400; color: #4a6a8a; }
-.weather-card .rain { font-size: 12px; color: #3a6a9a; margin-top: 6px; }
-.weather-src { font-size: 11px; color: #999; margin-top: 10px; }
-.weather-src a { color: #4a90d9; }
-/* Events */
-.event-row { display: flex; align-items: flex-start; padding: 9px 0;
-             border-bottom: 1px solid #e8e4de; }
-.event-row:last-child { border-bottom: none; }
-.event-time { min-width: 70px; font-size: 12px; color: #888;
-              font-variant-numeric: tabular-nums; padding-top: 2px; line-height: 1.4; }
-.event-body { flex: 1; }
-.event-name { font-size: 14px; font-weight: 600; color: #1e1e1e; line-height: 1.4; }
-.event-name.muted { color: #bbb; font-weight: 400; }
-.event-loc { font-size: 12px; color: #777; margin-top: 2px; }
-.badges { display: inline-flex; gap: 5px; margin-left: 6px; vertical-align: middle; }
-.badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 20px;
-         text-transform: uppercase; letter-spacing: 0.5px; }
-.badge-teams { background: #dbeafe; color: #1d4ed8; }
-.badge-presencial { background: #fee2e2; color: #b91c1c; }
-.badge-aniversario { background: #ede9fe; color: #6d28d9; }
-.badge-tentative { background: #fef3c7; color: #92400e; }
-.badge-feriado { background: #d1fae5; color: #065f46; }
-/* Next days */
-.day-block { margin-bottom: 18px; }
-.day-header { font-size: 13px; font-weight: 700; color: #1a3a2a; background: #e4ded5;
-              padding: 6px 12px; border-radius: 6px; margin-bottom: 4px;
-              display: flex; align-items: center; gap: 8px; }
-.day-full { font-size: 11px; color: #c0392b; font-weight: 600; }
-.empty-note { color: #999; font-size: 13px; font-style: italic; padding: 12px 0; }
-.footer { background: #1a3a2a; padding: 14px 32px; margin-top: 8px; }
-.footer p { color: #a8c4a0; font-size: 11px; }
-"""
-
-
-def badge(label, css_class):
-    return f'<span class="badge {css_class}">{label}</span>'
-
-
-def event_badges(ev):
-    b = []
+    tag = ""
     if is_teams(ev):
-        b.append(badge("Teams", "badge-teams"))
-    if is_presencial(ev):
-        b.append(badge("Presencial", "badge-presencial"))
-    if is_birthday(ev):
-        b.append(badge("Aniversário", "badge-aniversario"))
-    if is_holiday(ev):
-        b.append(badge("Feriado", "badge-feriado"))
-    status = ev.get("status", "")
-    my_status = ev.get("attendees", [{}])
-    # Check tentative via attendees
-    for att in ev.get("attendees", []):
-        if att.get("self") and att.get("responseStatus") == "tentative":
-            b.append(badge("Pendente", "badge-tentative"))
-            break
-    return "".join(b)
+        tag = " [Teams]"
+    elif ev["location"] and len(ev["location"]) > 3 and "teams" not in ev["location"].lower():
+        tag = " [📍]"
+
+    return f"  {time_str}  {summary}{tag}"
 
 
-def render_event_row(ev, show_location=True):
-    if is_all_day(ev):
-        time_str = "Dia todo"
-    else:
-        start = event_start_dt(ev)
-        end = event_end_dt(ev)
-        time_str = f"{fmt_time(start)}–{fmt_time(end)}"
-
-    summary = ev.get("summary") or "(sem título)"
-    if is_birthday(ev) and "🎂" not in summary:
-        summary = "🎂 " + summary
-
-    muted = "muted" if is_routine_short(ev) else ""
-    badges_html = event_badges(ev)
-
-    loc = ev.get("location") or ""
-    loc_display = ""
-    if show_location and loc and not is_routine_short(ev):
-        # Clean up location
-        loc_clean = loc.replace("Reunião do Microsoft Teams; ", "").replace("Reunião do Microsoft Teams", "").strip("; ")
-        if loc_clean:
-            loc_display = f'<div class="event-loc">{loc_clean}</div>'
-
-    return f"""
-    <div class="event-row">
-      <div class="event-time">{time_str}</div>
-      <div class="event-body">
-        <div class="event-name {muted}">{summary}{f'<span class="badges">{badges_html}</span>' if badges_html else ''}</div>
-        {loc_display}
-      </div>
-    </div>"""
-
-
-def build_html(weather, today_events, next_events, now):
-    weekday_idx = now.weekday()  # 0=Mon
-    weekday_name = WEEKDAY_PT[weekday_idx]
-    date_str = f"{now.day:02d}/{MONTH_PT[now.month]}/{now.year}"
-    date_label = f"{weekday_name}, {date_str}"
-
+def build_message(weather: dict, today_events: list, next_events: list, now: datetime) -> str:
+    wday = WEEKDAY_SHORT[now.weekday()]
+    date_str = f"{wday}, {now.day:02d}/{MONTH_PT[now.month]}/{now.year}"
     tomorrow = now + timedelta(days=1)
-    tomorrow_wday = WEEKDAY_PT[tomorrow.weekday()]
-    tomorrow_label = f"{tomorrow_wday} {tomorrow.day:02d}/{MONTH_PT[tomorrow.month]}"
-
-    tw = weather["today"]
-    amw = weather["tomorrow"]
+    tw, amw = weather["today"], weather["tomorrow"]
     tw_icon = weather_icon(tw["desc_en"])
     amw_icon = weather_icon(amw["desc_en"])
+    amw_wday = WEEKDAY_SHORT[tomorrow.weekday()]
 
-    # ── Today events ──
-    today_sorted = sorted(today_events, key=event_start_dt)
-    today_rows = "".join(render_event_row(ev) for ev in today_sorted)
-    if not today_rows:
-        today_rows = '<p class="empty-note">Nenhum evento encontrado para hoje.</p>'
+    lines = [
+        "🌿 <b>Briefing do Dia</b>",
+        f"<b>{date_str}</b> · Campinas, SP",
+        "",
+        f"{tw_icon} <b>Hoje</b>  {tw['desc']}  {tw['min']}°/{tw['max']}°C  🌧 {tw['rain']}%",
+        f"{amw_icon} <b>{amw_wday}</b>  {amw['desc']}  {amw['min']}°/{amw['max']}°C  🌧 {amw['rain']}%",
+        "",
+        f"📅 <b>Hoje — {wday} {now.day:02d}/{MONTH_PT[now.month]}</b>",
+    ]
 
-    # ── Next 7 days — group by date ──
+    today_rows = [fmt_event(ev) for ev in today_events]
+    today_rows = [r for r in today_rows if r]
+    lines += today_rows if today_rows else ["  (sem eventos)"]
+
     by_day = defaultdict(list)
     for ev in next_events:
-        dt = event_start_dt(ev).astimezone(TZ)
-        day_key = dt.date()
-        by_day[day_key].append(ev)
+        by_day[ev["start"].date()].append(ev)
 
-    next_blocks = ""
-    for day_date in sorted(by_day.keys()):
-        day_events = sorted(by_day[day_date], key=event_start_dt)
+    if by_day:
+        lines.append("")
+        lines.append("📆 <b>Próximos dias</b>")
+        for day_date in sorted(by_day.keys()):
+            rows = [fmt_event(ev) for ev in by_day[day_date]]
+            rows = [r for r in rows if r]
+            if not rows:
+                continue
+            dw = WEEKDAY_SHORT[day_date.weekday()]
+            lines.append(f"<b>{dw} {day_date.day:02d}/{MONTH_PT[day_date.month]}</b>")
+            lines += rows
 
-        # Omit purely routine short events from next-days view
-        filtered = [ev for ev in day_events if not is_routine_short(ev)]
-        if not filtered:
-            continue
-
-        wday = WEEKDAY_PT[day_date.weekday()]
-        day_label = f"{wday} · {day_date.day:02d}/{MONTH_PT[day_date.month]}"
-        is_full = len(filtered) >= 4
-        full_badge = '<span class="day-full">· Dia cheio</span>' if is_full else ""
-
-        rows = "".join(render_event_row(ev) for ev in filtered)
-        next_blocks += f"""
-    <div class="day-block">
-      <div class="day-header">{day_label} {full_badge}</div>
-      {rows}
-    </div>"""
-
-    if not next_blocks:
-        next_blocks = '<p class="empty-note">Nenhum evento nos próximos 7 dias.</p>'
-
-    gen_time = now.strftime("%d/%m/%Y às %H:%M")
-
-    html = f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Briefing do Dia — {date_label}</title>
-<style>{CSS}</style>
-</head>
-<body>
-<div class="wrapper">
-
-  <div class="header">
-    <h1>🌿 Briefing do Dia</h1>
-    <div class="subtitle">{date_label} · Campinas, SP</div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Previsão do Tempo</div>
-    <div class="weather-grid">
-      <div class="weather-card">
-        <div class="day-label">Hoje · {weekday_name[:3]} {now.day:02d}/{MONTH_PT[now.month]}</div>
-        <div class="icon">{tw_icon}</div>
-        <div class="condition">{tw["desc"]}</div>
-        <div class="temp">{tw["min"]}° <span>/ {tw["max"]}°C</span></div>
-        <div class="rain">🌧️ Chuva: {tw["rain"]}% de chance</div>
-      </div>
-      <div class="weather-card">
-        <div class="day-label">Amanhã · {tomorrow_label}</div>
-        <div class="icon">{amw_icon}</div>
-        <div class="condition">{amw["desc"]}</div>
-        <div class="temp">{amw["min"]}° <span>/ {amw["max"]}°C</span></div>
-        <div class="rain">🌦️ Chuva: {amw["rain"]}% de chance</div>
-      </div>
-    </div>
-    <p class="weather-src">Fonte: <a href="https://wttr.in/{CITY}">wttr.in</a></p>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Agenda de Hoje · {weekday_name} {date_str}</div>
-    {today_rows}
-  </div>
-
-  <div class="section">
-    <div class="section-title">Próximos 7 Dias</div>
-    {next_blocks}
-  </div>
-
-  <div class="footer">
-    <p>Gerado automaticamente em {gen_time} · Campinas, SP · {RECIPIENT}</p>
-  </div>
-
-</div>
-</body>
-</html>"""
-    return html
+    lines += ["", f"<i>Gerado às {now.strftime('%H:%M')}</i>"]
+    return "\n".join(lines)
 
 
-# ─── Gmail draft ───────────────────────────────────────────────────────────────
+# ─── Telegram ──────────────────────────────────────────────────────────────────
 
-def create_draft(gmail_service, subject, html_body):
-    msg = MIMEMultipart("alternative")
-    msg["To"] = RECIPIENT
-    msg["From"] = RECIPIENT
-    msg["Subject"] = subject
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
+def send_telegram(token: str, chat_id: str, text: str) -> None:
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-    raw = base64.urlsafe_b64encode(msg.as_bytes()).decode()
-    draft = gmail_service.users().drafts().create(
-        userId="me",
-        body={"message": {"raw": raw}},
-    ).execute()
-    return draft["id"]
+    def post(chunk):
+        r = requests.post(url, json={"chat_id": chat_id, "text": chunk, "parse_mode": "HTML"})
+        r.raise_for_status()
+
+    if len(text) <= 4096:
+        post(text)
+        return
+
+    # Split at line breaks if too long
+    chunks, current = [], ""
+    for line in text.split("\n"):
+        if len(current) + len(line) + 1 > 4000:
+            chunks.append(current)
+            current = line
+        else:
+            current += ("\n" if current else "") + line
+    if current:
+        chunks.append(current)
+    for chunk in chunks:
+        post(chunk)
 
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
@@ -526,44 +246,31 @@ def main():
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_end = now.replace(hour=23, minute=59, second=59, microsecond=0)
     tomorrow_start = today_start + timedelta(days=1)
-    week_end = today_start + timedelta(days=8)  # 7 full days ahead
+    week_end = today_start + timedelta(days=8)
 
-    weekday_idx = now.weekday()
-    weekday_name = WEEKDAY_PT[weekday_idx]
-    date_str = f"{weekday_name[:3]}, {now.day:02d}/{MONTH_PT[now.month]}/{now.year}"
-    subject = f"🌿 Briefing do Dia — {date_str}"
+    token = os.environ["TELEGRAM_BOT_TOKEN"]
+    chat_id = os.environ["TELEGRAM_CHAT_ID"]
+    ical_urls = [u.strip() for u in os.environ.get("GCAL_ICAL_URLS", "").split(",") if u.strip()]
 
-    print(f"[INFO] Generating briefing: {subject}")
+    print(f"[INFO] {len(ical_urls)} calendário(s) configurado(s)")
 
-    # Weather
-    print("[INFO] Fetching weather...")
+    print("[INFO] Buscando clima...")
     weather = get_weather()
-    print(f"[INFO] Today: {weather['today']['desc']} {weather['today']['min']}/{weather['today']['max']}°C")
+    print(f"[INFO] Hoje: {weather['today']['desc']} {weather['today']['min']}/{weather['today']['max']}°C")
 
-    # Google services
-    print("[INFO] Authenticating with Google...")
-    creds = get_credentials()
-    cal_service = build("calendar", "v3", credentials=creds)
-    gmail_service = build("gmail", "v1", credentials=creds)
+    print("[INFO] Buscando eventos de hoje...")
+    today_events = get_events(ical_urls, today_start, today_end)
+    print(f"[INFO] Hoje: {len(today_events)} evento(s)")
 
-    # Calendar events
-    print("[INFO] Fetching today's events...")
-    today_events = get_all_events(cal_service, today_start, today_end)
-    print(f"[INFO] Today: {len(today_events)} events")
+    print("[INFO] Buscando próximos 7 dias...")
+    next_events = get_events(ical_urls, tomorrow_start, week_end)
+    print(f"[INFO] Próximos 7 dias: {len(next_events)} evento(s)")
 
-    print("[INFO] Fetching next 7 days events...")
-    next_events = get_all_events(cal_service, tomorrow_start, week_end)
-    print(f"[INFO] Next 7 days: {len(next_events)} events")
+    message = build_message(weather, today_events, next_events, now)
 
-    # Build HTML
-    print("[INFO] Building HTML...")
-    html = build_html(weather, today_events, next_events, now)
-
-    # Create draft
-    print("[INFO] Creating Gmail draft...")
-    draft_id = create_draft(gmail_service, subject, html)
-    print(f"[SUCCESS] Draft created: {draft_id}")
-    print(f"[SUCCESS] Subject: {subject}")
+    print("[INFO] Enviando para o Telegram...")
+    send_telegram(token, chat_id, message)
+    print("[OK] Mensagem enviada!")
 
 
 if __name__ == "__main__":

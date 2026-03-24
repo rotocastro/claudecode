@@ -2,18 +2,18 @@ name: Briefing Diário do Rodolfo
 
 on:
   schedule:
-    # 06:30 BRT = 09:30 UTC (horário de Brasília = UTC-3)
+    # 06:30 BRT = 09:30 UTC (UTC-3)
     - cron: "30 9 * * *"
-  workflow_dispatch:  # permite rodar manualmente pelo GitHub
+  workflow_dispatch:
 
 jobs:
   briefing:
-    name: Gerar e salvar rascunho
+    name: Enviar briefing no Telegram
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
-      - name: Checkout do repositório
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Configurar Python
@@ -27,7 +27,7 @@ jobs:
 
       - name: Executar briefing
         env:
-          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          GCAL_ICAL_URLS: ${{ secrets.GCAL_ICAL_URLS }}
         run: python scripts/daily_briefing.py
