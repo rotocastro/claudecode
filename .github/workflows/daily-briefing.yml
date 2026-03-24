@@ -6,6 +6,9 @@ on:
     - cron: "30 9 * * *"
   workflow_dispatch:  # permite rodar manualmente pelo GitHub
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   briefing:
     name: Gerar e salvar rascunho
