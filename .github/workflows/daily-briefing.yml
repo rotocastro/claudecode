@@ -1,0 +1,33 @@
+name: Briefing Diário do Rodolfo
+
+on:
+  schedule:
+    # 06:30 BRT = 09:30 UTC (horário de Brasília = UTC-3)
+    - cron: "30 9 * * *"
+  workflow_dispatch:  # permite rodar manualmente pelo GitHub
+
+jobs:
+  briefing:
+    name: Gerar e salvar rascunho
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout do repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências
+        run: pip install -r scripts/requirements.txt
+
+      - name: Executar briefing
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+        run: python scripts/daily_briefing.py
